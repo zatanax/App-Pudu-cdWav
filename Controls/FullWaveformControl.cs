@@ -6,7 +6,6 @@ namespace App.Controls
 {
     public partial class FullWaveformControl : UserControl
     {
-        private float[] _audioData = Array.Empty<float>();
         private float[] _decimatedData = Array.Empty<float>();
         private Color _waveColor = Color.Cyan;
         private Color _backgroundColor = Color.Black;
@@ -18,6 +17,10 @@ namespace App.Controls
         private bool _showGrid = true;
         private int _maxDisplaySamples = 50000;
         private Rectangle _lastMarkerArea = Rectangle.Empty;
+
+        // Cache de Pens para evitar crear objetos en cada paint
+        private readonly Dictionary<Color, Pen> _penCache = new Dictionary<Color, Pen>();
+        private Pen? _waveformPen;
 
         public event EventHandler<TimeSpan>? PositionClicked;
 
@@ -135,8 +138,7 @@ namespace App.Controls
             for (int x = 0; x < width; x++)
             {
                 Color pixelColor = GetColorForPixelPosition(x, width);
-
-                using var pen = new Pen(pixelColor, 1);
+                Pen pen = GetCachedPen(pixelColor);
 
                 int startSample = (int)(x * samplesPerPixel);
                 int endSample = Math.Min((int)((x + 1) * samplesPerPixel), _decimatedData.Length);
@@ -166,6 +168,16 @@ namespace App.Controls
                     g.DrawLine(pen, x, y1, x, y2);
                 }
             }
+        }
+
+        private Pen GetCachedPen(Color color)
+        {
+            if (!_penCache.TryGetValue(color, out var pen))
+            {
+                pen = new Pen(color, 1);
+                _penCache[color] = pen;
+            }
+            return pen;
         }
 
         private Color GetColorForPixelPosition(int pixelX, int totalWidth)
@@ -314,31 +326,29 @@ namespace App.Controls
 
         public void SetAudioData(float[] audioData, TimeSpan duration)
         {
-            _audioData = audioData ?? Array.Empty<float>();
             _duration = duration;
 
-            DecimateAudioData();
-            Invalidate();
-        }
-
-        private void DecimateAudioData()
-        {
-            if (_audioData == null || _audioData.Length == 0)
+            // Decimate directamente sin guardar copia de audioData
+            if (audioData == null || audioData.Length == 0)
             {
                 _decimatedData = Array.Empty<float>();
-                return;
             }
-
-            int targetPoints = Math.Min(_audioData.Length, Math.Max(_maxDisplaySamples, this.Width * 2));
-
-            if (_audioData.Length <= targetPoints)
+            else
             {
-                _decimatedData = new float[_audioData.Length];
-                Array.Copy(_audioData, _decimatedData, _audioData.Length);
-                return;
+                int targetPoints = Math.Min(audioData.Length, Math.Max(_maxDisplaySamples, this.Width * 2));
+
+                if (audioData.Length <= targetPoints)
+                {
+                    _decimatedData = new float[audioData.Length];
+                    Array.Copy(audioData, _decimatedData, audioData.Length);
+                }
+                else
+                {
+                    _decimatedData = WaveformRenderer.PeakDownsample(audioData, targetPoints);
+                }
             }
 
-            _decimatedData = WaveformRenderer.PeakDownsample(_audioData, targetPoints);
+            Invalidate();
         }
 
         public void SetAudioCuts(List<AudioCut> audioCuts)
@@ -349,13 +359,33 @@ namespace App.Controls
 
         public void ClearWaveform()
         {
-            _audioData = Array.Empty<float>();
             _decimatedData = Array.Empty<float>();
             _duration = TimeSpan.Zero;
             _currentPosition = TimeSpan.Zero;
             _audioCuts.Clear();
             _lastMarkerArea = Rectangle.Empty;
+            ClearPenCache();
             Invalidate();
+        }
+
+        private void ClearPenCache()
+        {
+            foreach (var pen in _penCache.Values)
+            {
+                pen.Dispose();
+            }
+            _penCache.Clear();
+            _waveformPen?.Dispose();
+            _waveformPen = null;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                ClearPenCache();
+            }
+            base.Dispose(disposing);
         }
     }
 }

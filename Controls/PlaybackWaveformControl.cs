@@ -17,6 +17,7 @@ namespace App.Controls
 
         private readonly TimeSpan _windowDuration = TimeSpan.FromSeconds(20);
         private float[] _windowData = Array.Empty<float>();
+        private int _windowDataLength = 0; // Longitud real de datos en _windowData
         private int _samplesPerSecond = 44100;
         private TimeSpan _currentWindowStart = TimeSpan.Zero;
         private bool _needsWindowUpdate = true;
@@ -24,6 +25,13 @@ namespace App.Controls
         private System.Windows.Forms.Timer _refreshTimer;
         private bool _isPlaying = false;
         private Rectangle _lastCursorArea = Rectangle.Empty;
+
+        // Cache de Pens para evitar crear objetos en cada paint
+        private Pen? _waveformPen;
+        private Pen? _gridPen;
+        private Pen? _centerPen;
+        private Pen? _cutMarkerPen;
+        private Pen? _positionPen;
 
         public event EventHandler<TimeSpan>? PositionClicked;
 
@@ -56,8 +64,28 @@ namespace App.Controls
             InitializeComponent();
 
             _refreshTimer = new System.Windows.Forms.Timer();
-            _refreshTimer.Interval = 30; // 30ms = ~33 FPS
+            _refreshTimer.Interval = 50; // 50ms = 20 FPS (suficiente para cursor)
             _refreshTimer.Tick += OnRefreshTimer;
+
+            InitializePens();
+        }
+
+        private void InitializePens()
+        {
+            _waveformPen = new Pen(_waveColor, 1);
+            _gridPen = new Pen(_gridColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
+            _centerPen = new Pen(_gridColor, 2);
+            _cutMarkerPen = new Pen(Color.Red, 1);
+            _positionPen = new Pen(_positionMarkerColor, 1);
+        }
+
+        private void DisposePens()
+        {
+            _waveformPen?.Dispose();
+            _gridPen?.Dispose();
+            _centerPen?.Dispose();
+            _cutMarkerPen?.Dispose();
+            _positionPen?.Dispose();
         }
 
         private void InitializeComponent()
@@ -81,7 +109,7 @@ namespace App.Controls
 
             g.Clear(_backgroundColor);
 
-            if (_windowData == null || _windowData.Length == 0)
+            if (_windowDataLength == 0)
             {
                 DrawEmptyState(g);
                 return;
@@ -110,43 +138,42 @@ namespace App.Controls
 
         private void DrawGrid(Graphics g)
         {
-            using var pen = new Pen(_gridColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
+            if (_gridPen == null || _centerPen == null) return;
 
             int timeLines = 4;
             for (int i = 1; i < timeLines; i++)
             {
                 int x = Width * i / timeLines;
-                g.DrawLine(pen, x, 0, x, Height);
+                g.DrawLine(_gridPen, x, 0, x, Height);
             }
 
             int ampLines = 5;
             for (int i = 1; i < ampLines; i++)
             {
                 int y = Height * i / ampLines;
-                g.DrawLine(pen, 0, y, Width, y);
+                g.DrawLine(_gridPen, 0, y, Width, y);
             }
 
-            using var centerPen = new Pen(_gridColor, 2);
             int centerY = Height / 2;
-            g.DrawLine(centerPen, 0, centerY, Width, centerY);
+            g.DrawLine(_centerPen, 0, centerY, Width, centerY);
         }
 
         private void DrawWaveform(Graphics g)
         {
+            if (_waveformPen == null || _windowDataLength == 0) return;
+
             int width = Width;
             int height = Height;
             int centerY = height / 2;
 
-            float samplesPerPixel = (float)_windowData.Length / width;
+            float samplesPerPixel = (float)_windowDataLength / width;
 
             for (int x = 0; x < width; x++)
             {
-                using var pen = new Pen(_waveColor, 1);
-
                 int startSample = (int)(x * samplesPerPixel);
-                int endSample = Math.Min((int)((x + 1) * samplesPerPixel), _windowData.Length);
+                int endSample = Math.Min((int)((x + 1) * samplesPerPixel), _windowDataLength);
 
-                if (startSample >= _windowData.Length) break;
+                if (startSample >= _windowDataLength) break;
 
                 float min = 0, max = 0;
 
@@ -164,22 +191,20 @@ namespace App.Controls
 
                 if (y1 == y2)
                 {
-                    g.DrawLine(pen, x, y1, x, y1 + 1);
+                    g.DrawLine(_waveformPen, x, y1, x, y1 + 1);
                 }
                 else
                 {
-                    g.DrawLine(pen, x, y1, x, y2);
+                    g.DrawLine(_waveformPen, x, y1, x, y2);
                 }
             }
         }
 
         private void DrawCutMarkersInWindow(Graphics g)
         {
-            if (_audioCuts == null || _audioCuts.Count == 0 || _duration.TotalSeconds == 0) return;
+            if (_cutMarkerPen == null || _audioCuts == null || _audioCuts.Count == 0 || _duration.TotalSeconds == 0) return;
 
             var windowEnd = _currentWindowStart.Add(_windowDuration);
-
-            using var pen = new Pen(Color.Red, 1);
 
             foreach (var cut in _audioCuts)
             {
@@ -190,21 +215,21 @@ namespace App.Controls
                 {
                     float position = (float)((cutStart - _currentWindowStart).TotalSeconds / _windowDuration.TotalSeconds);
                     int x = (int)(position * Width);
-                    g.DrawLine(pen, x, 0, x, Height);
+                    g.DrawLine(_cutMarkerPen, x, 0, x, Height);
                 }
 
                 if (cutEnd >= _currentWindowStart && cutEnd <= windowEnd && cutEnd < _duration)
                 {
                     float position = (float)((cutEnd - _currentWindowStart).TotalSeconds / _windowDuration.TotalSeconds);
                     int x = (int)(position * Width);
-                    g.DrawLine(pen, x, 0, x, Height);
+                    g.DrawLine(_cutMarkerPen, x, 0, x, Height);
                 }
             }
         }
 
         private void DrawPositionMarker(Graphics g)
         {
-            if (_duration.TotalSeconds == 0) return;
+            if (_positionPen == null || _duration.TotalSeconds == 0) return;
 
             var relativePosition = _currentPosition - _currentWindowStart;
 
@@ -214,8 +239,7 @@ namespace App.Controls
             float position = (float)(relativePosition.TotalSeconds / _windowDuration.TotalSeconds);
             int x = (int)(position * Width);
 
-            using var pen = new Pen(_positionMarkerColor, 1);
-            g.DrawLine(pen, x, 0, x, Height);
+            g.DrawLine(_positionPen, x, 0, x, Height);
         }
 
         public void UpdateCursorPosition(TimeSpan position)
@@ -312,7 +336,7 @@ namespace App.Controls
         {
             if (_fullAudioData == null || _fullAudioData.Length == 0)
             {
-                _windowData = Array.Empty<float>();
+                _windowDataLength = 0;
                 return;
             }
 
@@ -324,13 +348,19 @@ namespace App.Controls
 
             if (startSample >= _fullAudioData.Length)
             {
-                _windowData = Array.Empty<float>();
+                _windowDataLength = 0;
                 return;
             }
 
             int actualSamples = endSample - startSample;
-            _windowData = new float[actualSamples];
 
+            // Reutilizar el array si tiene capacidad suficiente
+            if (_windowData.Length < actualSamples)
+            {
+                _windowData = new float[windowSamples]; // Asignar tamaño máximo de ventana
+            }
+
+            _windowDataLength = actualSamples;
             Array.Copy(_fullAudioData, startSample, _windowData, 0, actualSamples);
         }
 
@@ -394,6 +424,7 @@ namespace App.Controls
         {
             _fullAudioData = Array.Empty<float>();
             _windowData = Array.Empty<float>();
+            _windowDataLength = 0;
             _duration = TimeSpan.Zero;
             _currentPosition = TimeSpan.Zero;
             _currentWindowStart = TimeSpan.Zero;
@@ -402,6 +433,17 @@ namespace App.Controls
             _isPlaying = false;
             _refreshTimer.Stop();
             Invalidate();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _refreshTimer?.Stop();
+                _refreshTimer?.Dispose();
+                DisposePens();
+            }
+            base.Dispose(disposing);
         }
 
         private void OnRefreshTimer(object? sender, EventArgs e)
