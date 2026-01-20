@@ -391,6 +391,20 @@ namespace App
             this.Text = "AudioCut";
         }
 
+        private void OnExitClick(object? sender, EventArgs e)
+        {
+            var result = MessageBox.Show(
+                "Are you sure you want to exit?",
+                "Exit",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                this.Close();
+            }
+        }
+
         private void OnOpenCueClick(object? sender, EventArgs e)
         {
             if (_audioService.CurrentAudio == null)
