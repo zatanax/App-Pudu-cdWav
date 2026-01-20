@@ -97,7 +97,7 @@ namespace App.Controls
 
             using var font = new Font("Segoe UI", 12);
             using var brush = new SolidBrush(Color.Gray);
-            var text = "No audio cargado";
+            var text = "No audio loaded";
             var size = g.MeasureString(text, font);
             var x = (Width - size.Width) / 2;
             var y = (Height - size.Height) / 2;

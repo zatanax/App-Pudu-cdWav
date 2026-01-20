@@ -55,6 +55,12 @@ namespace App.Services
             _player.Seek(position);
         }
 
+        public void Close()
+        {
+            _player.Close();
+            _currentAudio = null;
+        }
+
         public void Dispose()
         {
             if (_disposed) return;

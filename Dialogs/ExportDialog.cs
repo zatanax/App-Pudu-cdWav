@@ -30,26 +30,26 @@ namespace App.Dialogs
         private void InitializeComponent()
         {
             this.Size = new Size(500, 300);
-            this.Text = "Exportar Pistas de Audio";
+            this.Text = "Export Audio Tracks";
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.StartPosition = FormStartPosition.CenterParent;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
 
-            // Mensaje principal
+            // Main message
             _lblMessage = new Label
             {
-                Text = "Se exportarán las pistas de audio seleccionadas",
+                Text = "Selected audio tracks will be exported",
                 Location = new Point(20, 20),
                 Size = new Size(450, 40),
                 Font = new Font("Segoe UI", 11F),
                 ForeColor = Color.FromArgb(64, 64, 64)
             };
 
-            // Label carpeta de destino
+            // Output folder label
             _lblOutputPath = new Label
             {
-                Text = "Carpeta de destino:",
+                Text = "Output folder:",
                 Location = new Point(20, 70),
                 Size = new Size(150, 20),
                 Font = new Font("Segoe UI", 9F)
@@ -90,10 +90,10 @@ namespace App.Dialogs
                 Visible = false
             };
 
-            // Botón Exportar
+            // Export Button
             _btnExport = new Button
             {
-                Text = "Exportar",
+                Text = "Export",
                 Location = new Point(280, 230),
                 Size = new Size(90, 30),
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
@@ -104,10 +104,10 @@ namespace App.Dialogs
             _btnExport.FlatAppearance.BorderSize = 0;
             _btnExport.Click += OnExportClick;
 
-            // Botón Cancelar
+            // Cancel Button
             _btnCancel = new Button
             {
-                Text = "Cancelar",
+                Text = "Cancel",
                 Location = new Point(380, 230),
                 Size = new Size(90, 30),
                 Font = new Font("Segoe UI", 9F)
@@ -150,16 +150,16 @@ namespace App.Dialogs
         {
             if (_audioFile == null)
             {
-                _lblSummary.Text = "No hay archivo cargado";
+                _lblSummary.Text = "No file loaded";
                 return;
             }
 
-            // Calcular solo pistas seleccionadas
+            // Calculate selected tracks only
             var selectedTracks = _audioCuts.Where(cut => cut.IsSelected).ToList();
 
             if (selectedTracks.Count == 0)
             {
-                _lblSummary.Text = "⚠ No hay pistas seleccionadas para exportar";
+                _lblSummary.Text = "⚠ No tracks selected for export";
                 _lblSummary.ForeColor = Color.FromArgb(200, 100, 0);
                 _btnExport.Enabled = false;
                 return;
@@ -168,20 +168,20 @@ namespace App.Dialogs
             _btnExport.Enabled = true;
             _lblSummary.ForeColor = Color.FromArgb(100, 100, 100);
 
-            // Calcular duración total
+            // Calculate total duration
             var totalDuration = TimeSpan.Zero;
             foreach (var track in selectedTracks)
             {
                 totalDuration = totalDuration.Add(track.Duration);
             }
 
-            // Estimar tamaño (WAV estéreo 16-bit 44.1kHz ≈ 172KB/segundo)
+            // Estimate size (WAV stereo 16-bit 44.1kHz ≈ 172KB/second)
             var estimatedSizeBytes = (long)(totalDuration.TotalSeconds * 176400);
             var estimatedSizeMB = estimatedSizeBytes / (1024.0 * 1024.0);
 
-            _lblSummary.Text = $"Pistas seleccionadas: {selectedTracks.Count}\n" +
-                              $"Duración total: {FormatDuration(totalDuration)}\n" +
-                              $"Espacio estimado: {estimatedSizeMB:F1} MB";
+            _lblSummary.Text = $"Selected tracks: {selectedTracks.Count}\n" +
+                              $"Total duration: {FormatDuration(totalDuration)}\n" +
+                              $"Estimated size: {estimatedSizeMB:F1} MB";
         }
 
         private string FormatDuration(TimeSpan duration)
@@ -196,7 +196,7 @@ namespace App.Dialogs
         {
             using var folderDialog = new FolderBrowserDialog
             {
-                Description = "Seleccionar carpeta de destino para las pistas",
+                Description = "Select destination folder for tracks",
                 ShowNewFolderButton = true,
                 SelectedPath = _txtOutputPath.Text
             };
@@ -209,19 +209,19 @@ namespace App.Dialogs
 
         private async void OnExportClick(object? sender, EventArgs e)
         {
-            // Validar que hay pistas seleccionadas
+            // Validate selected tracks
             var selectedTracks = _audioCuts.Where(cut => cut.IsSelected).ToList();
             if (selectedTracks.Count == 0)
             {
-                MessageBox.Show("No hay pistas seleccionadas para exportar.", "Información",
+                MessageBox.Show("No tracks selected for export.", "Information",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            // Validar directorio de salida
+            // Validate output directory
             if (string.IsNullOrWhiteSpace(_txtOutputPath.Text))
             {
-                MessageBox.Show("Seleccione una carpeta de destino válida.", "Error",
+                MessageBox.Show("Please select a valid destination folder.", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
@@ -255,9 +255,9 @@ namespace App.Dialogs
                 var exporter = new WaveformExporter();
                 await exporter.ExportCutsAsync(selectedTracks, _audioFile, _txtOutputPath.Text, progress);
 
-                MessageBox.Show($"Exportación completada con éxito.\n\n" +
-                              $"Archivos guardados en:\n{_txtOutputPath.Text}",
-                              "Exportación Completada",
+                MessageBox.Show($"Export completed successfully.\n\n" +
+                              $"Files saved to:\n{_txtOutputPath.Text}",
+                              "Export Completed",
                               MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                 this.DialogResult = DialogResult.OK;
@@ -265,7 +265,7 @@ namespace App.Dialogs
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error durante la exportación:\n{ex.Message}", "Error",
+                MessageBox.Show($"Error during export:\n{ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally

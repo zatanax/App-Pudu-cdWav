@@ -2,6 +2,7 @@ using App.Models;
 using App.Services;
 using App.Controls;
 using App.Utilities;
+using App.Dialogs;
 
 namespace App
 {
@@ -98,17 +99,47 @@ namespace App
         {
             var fileMenu = new ToolStripMenuItem("&File");
 
-            var openItem = new ToolStripMenuItem("&Abrir...", null, OnOpenFileClick);
-            openItem.ShortcutKeys = Keys.Control | Keys.O;
-            fileMenu.DropDownItems.Add(openItem);
+            // Open Audio
+            var openAudioItem = new ToolStripMenuItem("&Open Audio...", null, OnOpenFileClick);
+            openAudioItem.ShortcutKeys = Keys.Control | Keys.O;
+            fileMenu.DropDownItems.Add(openAudioItem);
 
-            var saveItem = new ToolStripMenuItem("&Guardar...", null, OnSaveClick);
-            saveItem.ShortcutKeys = Keys.Control | Keys.S;
-            fileMenu.DropDownItems.Add(saveItem);
+            // Close
+            var closeItem = new ToolStripMenuItem("&Close", null, OnCloseFileClick);
+            closeItem.ShortcutKeys = Keys.Control | Keys.W;
+            fileMenu.DropDownItems.Add(closeItem);
 
             fileMenu.DropDownItems.Add(new ToolStripSeparator());
 
-            var exitItem = new ToolStripMenuItem("&Salir", null, (s, e) => this.Close());
+            // Open Cue
+            var openCueItem = new ToolStripMenuItem("Open &Cue...", null, OnOpenCueClick);
+            openCueItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.O;
+            fileMenu.DropDownItems.Add(openCueItem);
+
+            // Save Cue
+            var saveCueItem = new ToolStripMenuItem("&Save Cue...", null, OnSaveCueClick);
+            saveCueItem.ShortcutKeys = Keys.Control | Keys.S;
+            fileMenu.DropDownItems.Add(saveCueItem);
+
+            fileMenu.DropDownItems.Add(new ToolStripSeparator());
+
+            // Export Audio (submenu)
+            var exportMenu = new ToolStripMenuItem("&Export Audio");
+
+            var exportSelectedItem = new ToolStripMenuItem("Export &Selected...", null, OnExportSelectedClick);
+            exportSelectedItem.ShortcutKeys = Keys.Control | Keys.E;
+            exportMenu.DropDownItems.Add(exportSelectedItem);
+
+            var exportAllItem = new ToolStripMenuItem("Export &All...", null, OnExportAllClick);
+            exportAllItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.E;
+            exportMenu.DropDownItems.Add(exportAllItem);
+
+            fileMenu.DropDownItems.Add(exportMenu);
+
+            fileMenu.DropDownItems.Add(new ToolStripSeparator());
+
+            // Exit
+            var exitItem = new ToolStripMenuItem("E&xit", null, OnExitClick);
             exitItem.ShortcutKeys = Keys.Alt | Keys.F4;
             fileMenu.DropDownItems.Add(exitItem);
 
@@ -126,10 +157,10 @@ namespace App
         {
             var helpMenu = new ToolStripMenuItem("&Help");
 
-            var aboutItem = new ToolStripMenuItem("&Acerca de...", null, (s, e) =>
+            var aboutItem = new ToolStripMenuItem("&About...", null, (s, e) =>
             {
-                MessageBox.Show("AudioCut v1.0\nEditor de audio con controles nativos Windows Forms",
-                    "Acerca de", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("AudioCut v1.0\nAudio editor with native Windows Forms controls",
+                    "About", MessageBoxButtons.OK, MessageBoxIcon.Information);
             });
             helpMenu.DropDownItems.Add(aboutItem);
 
@@ -211,33 +242,33 @@ namespace App
                 ReadOnly = true
             });
 
-            // Columna Tiempo Inicio
+            // Start Time Column
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 Name = "Start",
-                HeaderText = "Tiempo Inicio",
+                HeaderText = "Start Time",
                 Width = 100,
                 ReadOnly = true
             });
 
-            // Columna Duración
+            // Duration Column
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 Name = "Duration",
-                HeaderText = "Duración",
+                HeaderText = "Duration",
                 Width = 100,
                 ReadOnly = true
             });
 
-            // Columna Nombre (editable)
+            // Name Column (editable)
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 Name = "Name",
-                HeaderText = "Nombre",
+                HeaderText = "Name",
                 AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill
             });
 
-            // Columna Checkbox
+            // Checkbox Column
             grid.Columns.Add(new DataGridViewCheckBoxColumn
             {
                 Name = "Selected",
@@ -245,7 +276,7 @@ namespace App
                 Width = 40
             });
 
-            // Columna Eliminar
+            // Delete Column
             grid.Columns.Add(new DataGridViewButtonColumn
             {
                 Name = "Delete",
@@ -290,7 +321,7 @@ namespace App
             using var openFileDialog = new OpenFileDialog
             {
                 Filter = AudioFileLoader.GetImportFileFilter(),
-                Title = "Seleccionar archivo WAV"
+                Title = "Select WAV file"
             };
 
             if (openFileDialog.ShowDialog() != DialogResult.OK)
@@ -321,60 +352,294 @@ namespace App
 
                 this.Cursor = Cursors.Default;
 
-                MessageBox.Show("Archivo cargado correctamente", "Éxito",
+                MessageBox.Show("File loaded successfully", "Success",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
                 this.Cursor = Cursors.Default;
-                MessageBox.Show($"Error al cargar archivo: {ex.Message}", "Error",
+                MessageBox.Show($"Error loading file: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private void OnSaveClick(object? sender, EventArgs e)
+        private void OnCloseFileClick(object? sender, EventArgs e)
         {
             if (_audioService.CurrentAudio == null)
             {
-                MessageBox.Show("No hay archivo cargado", "Información",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            var selectedCuts = _audioCuts.Where(c => c.IsSelected).ToList();
-            if (!selectedCuts.Any())
+            // Stop playback
+            _audioService.Stop();
+
+            // Clear audio service
+            _audioService.Close();
+
+            // Clear waveforms
+            _fullWaveform.ClearWaveform();
+            _playbackWaveform.ClearWaveform();
+
+            // Clear cuts
+            _audioCuts.Clear();
+            _cutsGrid.Rows.Clear();
+
+            // Reset time label
+            _lblTime.Text = "00:00.00 / 00:00.00";
+
+            // Reset window title
+            this.Text = "AudioCut";
+        }
+
+        private void OnOpenCueClick(object? sender, EventArgs e)
+        {
+            if (_audioService.CurrentAudio == null)
             {
-                MessageBox.Show("No hay cortes seleccionados para exportar", "Información",
+                MessageBox.Show("Please load an audio file first", "Information",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
+            using var openFileDialog = new OpenFileDialog
+            {
+                Filter = "Cue Files|*.cue|All Files|*.*",
+                Title = "Open Cue File"
+            };
+
+            if (openFileDialog.ShowDialog() != DialogResult.OK)
+                return;
+
+            try
+            {
+                var lines = File.ReadAllLines(openFileDialog.FileName);
+                var trackTimes = new List<TimeSpan>();
+
+                // Parse CUE format: INDEX 01 MM:SS:FF (FF = frames, 75 per second)
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    if (trimmed.StartsWith("INDEX 01"))
+                    {
+                        var timePart = trimmed.Substring(9).Trim();
+                        var time = ParseCueTime(timePart);
+                        if (time.HasValue)
+                        {
+                            trackTimes.Add(time.Value);
+                        }
+                    }
+                }
+
+                if (trackTimes.Count > 0)
+                {
+                    // Create cuts from track times
+                    var newCuts = new List<AudioCut>();
+                    var duration = _audioService.Duration;
+
+                    for (int i = 0; i < trackTimes.Count; i++)
+                    {
+                        var start = trackTimes[i];
+                        var end = (i < trackTimes.Count - 1) ? trackTimes[i + 1] : duration;
+
+                        newCuts.Add(new AudioCut
+                        {
+                            Start = start,
+                            Duration = end - start,
+                            IsSelected = true
+                        });
+                    }
+
+                    _audioCuts = newCuts;
+                    SortAndUpdateCuts();
+                    MessageBox.Show($"Loaded {newCuts.Count} tracks", "Success",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading Cue: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private TimeSpan? ParseCueTime(string timeStr)
+        {
+            // Format: MM:SS:FF where FF = frames (75 frames per second)
+            var parts = timeStr.Split(':');
+            if (parts.Length == 3 &&
+                int.TryParse(parts[0], out int minutes) &&
+                int.TryParse(parts[1], out int seconds) &&
+                int.TryParse(parts[2], out int frames))
+            {
+                double totalSeconds = minutes * 60 + seconds + frames / 75.0;
+                return TimeSpan.FromSeconds(totalSeconds);
+            }
+            return null;
+        }
+
+        private string ToCueTime(TimeSpan time)
+        {
+            // Format: MM:SS:FF where FF = frames (75 frames per second)
+            int totalMinutes = (int)time.TotalMinutes;
+            int seconds = time.Seconds;
+            int frames = (int)(time.Milliseconds / 1000.0 * 75);
+            return $"{totalMinutes:D2}:{seconds:D2}:{frames:D2}";
+        }
+
+        private void OnSaveCueClick(object? sender, EventArgs e)
+        {
+            if (_audioService.CurrentAudio == null || _audioCuts.Count == 0)
+            {
+                MessageBox.Show("No cuts to save", "Information",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using var saveFileDialog = new SaveFileDialog
+            {
+                Filter = "Cue Files|*.cue",
+                Title = "Save Cue File",
+                FileName = Path.GetFileNameWithoutExtension(_audioService.CurrentAudio.FileName) + ".cue"
+            };
+
+            if (saveFileDialog.ShowDialog() != DialogResult.OK)
+                return;
+
+            try
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"FILE \"{_audioService.CurrentAudio.FilePath}\" WAVE");
+
+                for (int i = 0; i < _audioCuts.Count; i++)
+                {
+                    var cut = _audioCuts[i];
+                    sb.AppendLine($"  TRACK {(i + 1):D2} AUDIO");
+                    sb.AppendLine($"    INDEX 01 {ToCueTime(cut.Start)}");
+                }
+
+                File.WriteAllText(saveFileDialog.FileName, sb.ToString());
+
+                MessageBox.Show("Cue file saved successfully", "Success",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error saving Cue: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async void OnExportSelectedClick(object? sender, EventArgs e)
+        {
+            await ExportCutsAsync(_audioCuts.Where(c => c.IsSelected).ToList(), "selected");
+        }
+
+        private async void OnExportAllClick(object? sender, EventArgs e)
+        {
+            await ExportCutsAsync(_audioCuts, "");
+        }
+
+        private async Task ExportCutsAsync(List<AudioCut> cuts, string description)
+        {
+            if (_audioService.CurrentAudio == null)
+            {
+                MessageBox.Show("No file loaded", "Information",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (!cuts.Any())
+            {
+                var msg = string.IsNullOrEmpty(description) ? "No cuts to export" : $"No {description} cuts to export";
+                MessageBox.Show(msg, "Information",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // Show export options dialog
+            using var optionsDialog = new ExportOptionsDialog(
+                _audioService.CurrentAudio.SampleRate,
+                _audioService.CurrentAudio.BitDepth);
+
+            if (optionsDialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            var exportOptions = optionsDialog.Options;
+
+            // Select output folder
             using var folderDialog = new FolderBrowserDialog
             {
-                Description = "Seleccionar carpeta de destino",
+                Description = "Select destination folder",
                 ShowNewFolderButton = true
             };
 
             if (folderDialog.ShowDialog() != DialogResult.OK)
                 return;
 
+            // Create progress form
+            var progressForm = new Form
+            {
+                Text = "Exporting...",
+                Size = new Size(350, 120),
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterParent,
+                MaximizeBox = false,
+                MinimizeBox = false,
+                ControlBox = false
+            };
+
+            var progressLabel = new Label
+            {
+                Text = "Exporting audio files, please wait...",
+                Location = new Point(20, 15),
+                Size = new Size(300, 20)
+            };
+
+            var progressBar = new ProgressBar
+            {
+                Location = new Point(20, 45),
+                Size = new Size(295, 25),
+                Minimum = 0,
+                Maximum = 100
+            };
+
+            progressForm.Controls.Add(progressLabel);
+            progressForm.Controls.Add(progressBar);
+
             try
             {
-                this.Cursor = Cursors.WaitCursor;
+                progressForm.Show(this);
+                this.Enabled = false;
+
+                var progress = new Progress<int>(p =>
+                {
+                    progressBar.Value = p;
+                    progressLabel.Text = $"Exporting... {p}%";
+                });
+
+                var exportSettings = new ExportSettings
+                {
+                    UseOriginalFormat = exportOptions.UseOriginalFormat,
+                    SampleRate = exportOptions.SampleRate,
+                    BitsPerSample = exportOptions.BitsPerSample
+                };
 
                 var exporter = new WaveformExporter();
-                exporter.ExportCutsAsync(selectedCuts, _audioService.CurrentAudio!, folderDialog.SelectedPath, null).Wait();
+                await exporter.ExportCutsAsync(cuts, _audioService.CurrentAudio!, folderDialog.SelectedPath, progress, exportSettings);
 
-                this.Cursor = Cursors.Default;
-
-                MessageBox.Show($"Exportación completada.\nArchivos guardados en: {folderDialog.SelectedPath}",
-                    "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show($"Export completed.\n{cuts.Count} files saved to: {folderDialog.SelectedPath}",
+                    "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                this.Cursor = Cursors.Default;
-                MessageBox.Show($"Error durante exportación: {ex.Message}", "Error",
+                MessageBox.Show($"Error during export: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                this.Enabled = true;
+                progressForm.Close();
+                progressForm.Dispose();
+                this.Cursor = Cursors.Default;
             }
         }
 
@@ -384,23 +649,23 @@ namespace App
 
             if (currentPosition <= TimeSpan.Zero || currentPosition >= _audioService.Duration)
             {
-                MessageBox.Show("Posición no válida para cortar", "Información",
+                MessageBox.Show("Invalid position for cutting", "Information",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            // Encontrar corte a dividir
+            // Find cut to split
             var cutToSplit = _audioCuts.FirstOrDefault(c =>
                 currentPosition >= c.Start && currentPosition < c.EndTime);
 
             if (cutToSplit == null)
             {
-                MessageBox.Show("No se encontró un corte en esta posición", "Información",
+                MessageBox.Show("No cut found at this position", "Information",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            // Crear dos nuevos cortes
+            // Create two new cuts
             var firstCut = new AudioCut
             {
                 Start = cutToSplit.Start,
@@ -415,7 +680,7 @@ namespace App
                 IsSelected = true
             };
 
-            // Reemplazar
+            // Replace
             _audioCuts.Remove(cutToSplit);
             _audioCuts.Add(firstCut);
             _audioCuts.Add(secondCut);
@@ -471,7 +736,7 @@ namespace App
             {
                 if (_audioCuts.Count <= 1)
                 {
-                    MessageBox.Show("No se puede eliminar el último corte", "Información",
+                    MessageBox.Show("Cannot delete the last cut", "Information",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }

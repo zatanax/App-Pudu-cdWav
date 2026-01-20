@@ -123,6 +123,12 @@ namespace App.Services
             }
         }
 
+        public void Close()
+        {
+            DisposeAudio();
+            UpdateState(Models.PlaybackState.Stopped);
+        }
+
         private void DisposeAudio()
         {
             StopPositionTimer();
