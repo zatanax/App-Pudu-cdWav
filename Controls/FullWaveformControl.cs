@@ -354,7 +354,7 @@ namespace App.Controls
         public void SetAudioCuts(List<AudioCut> audioCuts)
         {
             _audioCuts = audioCuts ?? new List<AudioCut>();
-            Invalidate();
+            Refresh();
         }
 
         public void ClearWaveform()

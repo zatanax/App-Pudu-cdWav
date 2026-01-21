@@ -750,9 +750,38 @@ namespace App
             {
                 if (_audioCuts.Count <= 1)
                 {
-                    MessageBox.Show("Cannot delete the last cut", "Information",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    // Reset to single cut covering entire audio
+                    if (_audioService.CurrentAudio != null)
+                    {
+                        _audioCuts.Clear();
+                        _audioCuts.Add(new AudioCut
+                        {
+                            TrackName = $"{Path.GetFileNameWithoutExtension(_audioService.CurrentAudio.FileName)}_001",
+                            Start = TimeSpan.Zero,
+                            Duration = _audioService.Duration,
+                            CutColor = ColorGenerator.GetColorForIndex(0),
+                            IsSelected = true
+                        });
+                        SortAndUpdateCuts();
+                    }
                     return;
+                }
+
+                // Merge with previous cut (or next if it's the first one)
+                var cutToDelete = _audioCuts[e.RowIndex];
+
+                if (e.RowIndex > 0)
+                {
+                    // Merge with previous: extend previous cut's duration
+                    var previousCut = _audioCuts[e.RowIndex - 1];
+                    previousCut.Duration = previousCut.Duration + cutToDelete.Duration;
+                }
+                else if (e.RowIndex < _audioCuts.Count - 1)
+                {
+                    // It's the first cut, merge with next: move next cut's start back
+                    var nextCut = _audioCuts[e.RowIndex + 1];
+                    nextCut.Start = cutToDelete.Start;
+                    nextCut.Duration = nextCut.Duration + cutToDelete.Duration;
                 }
 
                 _audioCuts.RemoveAt(e.RowIndex);
