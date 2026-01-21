@@ -4,7 +4,12 @@ AudioCut is a Windows desktop application designed to work with WAV audio files,
 
 The application is focused on precise audio segmentation, making it ideal for editing long recordings such as concerts, rehearsals, interviews, or continuous audio sessions.
 
+## Download
 
+Precompiled versions of AudioCut are available on the official GitHub Releases page.
+
+You can download the latest stable release here:  
+https://github.com/zatanax/App-Pudu-cdWav/releases
 
 ---
 Software
