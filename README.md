@@ -64,4 +64,4 @@ Please review the repository for licensing details if applicable.
 
 ## Author
 
-Developed by **Simon Tello**
+Developed by **Simon**
