@@ -18,9 +18,8 @@ namespace App.Controls
         private int _maxDisplaySamples = 50000;
         private Rectangle _lastMarkerArea = Rectangle.Empty;
 
-        // Cache de Pens para evitar crear objetos en cada paint
-        private readonly Dictionary<Color, Pen> _penCache = new Dictionary<Color, Pen>();
-        private Pen? _waveformPen;
+        // LRU Cache de Pens para evitar memory leaks (max 50 pens)
+        private readonly LRUPenCache _penCache = new LRUPenCache(50);
 
         public event EventHandler<TimeSpan>? PositionClicked;
 
@@ -172,12 +171,7 @@ namespace App.Controls
 
         private Pen GetCachedPen(Color color)
         {
-            if (!_penCache.TryGetValue(color, out var pen))
-            {
-                pen = new Pen(color, 1);
-                _penCache[color] = pen;
-            }
-            return pen;
+            return _penCache.GetPen(color);
         }
 
         private Color GetColorForPixelPosition(int pixelX, int totalWidth)
@@ -370,20 +364,14 @@ namespace App.Controls
 
         private void ClearPenCache()
         {
-            foreach (var pen in _penCache.Values)
-            {
-                pen.Dispose();
-            }
             _penCache.Clear();
-            _waveformPen?.Dispose();
-            _waveformPen = null;
         }
 
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
-                ClearPenCache();
+                _penCache.Dispose();
             }
             base.Dispose(disposing);
         }
