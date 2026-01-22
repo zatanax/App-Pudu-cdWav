@@ -21,6 +21,18 @@ namespace App.Controls
         // LRU Cache de Pens para evitar memory leaks (max 50 pens)
         private readonly LRUPenCache _penCache = new LRUPenCache(50);
 
+        // Caches de renderizado para optimización
+        private Bitmap? _waveformCache;
+        private Bitmap? _gridCache;
+        private bool _waveformDirty = true;
+        private bool _gridDirty = true;
+        private Size _lastSize = Size.Empty;
+
+        // Pens estáticos para grilla
+        private Pen? _gridPen;
+        private Pen? _gridCenterPen;
+        private Pen? _positionPen;
+
         public event EventHandler<TimeSpan>? PositionClicked;
 
         [Category("Appearance")]
@@ -44,12 +56,35 @@ namespace App.Controls
         public bool ShowGrid
         {
             get => _showGrid;
-            set { _showGrid = value; Invalidate(); }
+            set { _showGrid = value; _gridDirty = true; Invalidate(); }
         }
 
         public FullWaveformControl()
         {
             InitializeComponent();
+            InitializePens();
+        }
+
+        private void InitializePens()
+        {
+            _gridPen = new Pen(_gridColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
+            _gridCenterPen = new Pen(_gridColor, 2);
+            _positionPen = new Pen(_positionMarkerColor, 3);
+        }
+
+        private void DisposePens()
+        {
+            _gridPen?.Dispose();
+            _gridCenterPen?.Dispose();
+            _positionPen?.Dispose();
+        }
+
+        private void DisposeCaches()
+        {
+            _waveformCache?.Dispose();
+            _waveformCache = null;
+            _gridCache?.Dispose();
+            _gridCache = null;
         }
 
         private void InitializeComponent()
@@ -68,6 +103,14 @@ namespace App.Controls
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            // Verificar si cambió el tamaño
+            if (_lastSize != Size)
+            {
+                _lastSize = Size;
+                _gridDirty = true;
+                _waveformDirty = true;
+            }
+
             if (_decimatedData == null || _decimatedData.Length == 0)
             {
                 DrawEmptyState(e.Graphics);
@@ -75,59 +118,84 @@ namespace App.Controls
             }
 
             Graphics g = e.Graphics;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            g.Clear(_backgroundColor);
-
-            if (_showGrid)
+            // Regenerar caches si es necesario
+            if (_gridDirty || _gridCache == null)
             {
-                DrawGrid(g);
+                RegenerateGridCache();
             }
 
-            DrawWaveform(g);
-            DrawAudioCutSeparators(g);
-            DrawCutMarkers(g);
+            if (_waveformDirty || _waveformCache == null)
+            {
+                RegenerateWaveformCache();
+            }
+
+            // Dibujar fondo
+            g.Clear(_backgroundColor);
+
+            // Dibujar grid desde cache
+            if (_showGrid && _gridCache != null)
+            {
+                g.DrawImageUnscaled(_gridCache, 0, 0);
+            }
+
+            // Dibujar waveform desde cache
+            if (_waveformCache != null)
+            {
+                g.DrawImageUnscaled(_waveformCache, 0, 0);
+            }
+
+            // Solo estos se dibujan dinámicamente
             DrawPositionMarker(g);
         }
 
-        private void DrawEmptyState(Graphics g)
+        private void RegenerateGridCache()
         {
-            g.Clear(_backgroundColor);
+            _gridCache?.Dispose();
 
-            using var font = new Font("Segoe UI", 12);
-            using var brush = new SolidBrush(Color.Gray);
-            var text = "No audio loaded";
-            var size = g.MeasureString(text, font);
-            var x = (Width - size.Width) / 2;
-            var y = (Height - size.Height) / 2;
-            g.DrawString(text, font, brush, x, y);
-        }
+            if (Width <= 0 || Height <= 0) return;
 
-        private void DrawGrid(Graphics g)
-        {
-            using var pen = new Pen(_gridColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
+            _gridCache = new Bitmap(Width, Height);
+            using var g = Graphics.FromImage(_gridCache);
+            g.Clear(Color.Transparent);
+
+            if (_gridPen == null || _gridCenterPen == null) return;
 
             int timeLines = 10;
             for (int i = 1; i < timeLines; i++)
             {
                 int x = Width * i / timeLines;
-                g.DrawLine(pen, x, 0, x, Height);
+                g.DrawLine(_gridPen, x, 0, x, Height);
             }
 
             int ampLines = 5;
             for (int i = 1; i < ampLines; i++)
             {
                 int y = Height * i / ampLines;
-                g.DrawLine(pen, 0, y, Width, y);
+                g.DrawLine(_gridPen, 0, y, Width, y);
             }
 
-            using var centerPen = new Pen(_gridColor, 2);
             int centerY = Height / 2;
-            g.DrawLine(centerPen, 0, centerY, Width, centerY);
+            g.DrawLine(_gridCenterPen, 0, centerY, Width, centerY);
+
+            _gridDirty = false;
         }
 
-        private void DrawWaveform(Graphics g)
+        private void RegenerateWaveformCache()
         {
+            _waveformCache?.Dispose();
+
+            if (Width <= 0 || Height <= 0 || _decimatedData == null || _decimatedData.Length == 0)
+            {
+                _waveformCache = null;
+                return;
+            }
+
+            _waveformCache = new Bitmap(Width, Height);
+            using var g = Graphics.FromImage(_waveformCache);
+            g.Clear(Color.Transparent);
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
             int width = Width;
             int height = Height;
             int centerY = height / 2;
@@ -167,6 +235,25 @@ namespace App.Controls
                     g.DrawLine(pen, x, y1, x, y2);
                 }
             }
+
+            // Dibujar separadores y marcadores de corte en el cache
+            DrawAudioCutSeparatorsToGraphics(g);
+            DrawCutMarkersToGraphics(g);
+
+            _waveformDirty = false;
+        }
+
+        private void DrawEmptyState(Graphics g)
+        {
+            g.Clear(_backgroundColor);
+
+            using var font = new Font("Segoe UI", 12);
+            using var brush = new SolidBrush(Color.Gray);
+            var text = "No audio loaded";
+            var size = g.MeasureString(text, font);
+            var x = (Width - size.Width) / 2;
+            var y = (Height - size.Height) / 2;
+            g.DrawString(text, font, brush, x, y);
         }
 
         private Pen GetCachedPen(Color color)
@@ -199,7 +286,7 @@ namespace App.Controls
             return _waveColor;
         }
 
-        private void DrawAudioCutSeparators(Graphics g)
+        private void DrawAudioCutSeparatorsToGraphics(Graphics g)
         {
             if (_audioCuts == null || _audioCuts.Count == 0 || _duration.TotalSeconds == 0) return;
 
@@ -231,7 +318,7 @@ namespace App.Controls
             }
         }
 
-        private void DrawCutMarkers(Graphics g)
+        private void DrawCutMarkersToGraphics(Graphics g)
         {
             if (_audioCuts == null || _audioCuts.Count == 0 || _duration.TotalSeconds == 0) return;
 
@@ -254,13 +341,12 @@ namespace App.Controls
 
         private void DrawPositionMarker(Graphics g)
         {
-            if (_duration.TotalSeconds == 0) return;
+            if (_duration.TotalSeconds == 0 || _positionPen == null) return;
 
             float position = (float)(_currentPosition.TotalSeconds / _duration.TotalSeconds);
             int x = (int)(position * Width);
 
-            using var pen = new Pen(_positionMarkerColor, 3);
-            g.DrawLine(pen, x, 0, x, Height);
+            g.DrawLine(_positionPen, x, 0, x, Height);
 
             using var brush = new SolidBrush(_positionMarkerColor);
             Point[] triangle = {
@@ -342,12 +428,14 @@ namespace App.Controls
                 }
             }
 
+            _waveformDirty = true;
             Invalidate();
         }
 
         public void SetAudioCuts(List<AudioCut> audioCuts)
         {
             _audioCuts = audioCuts ?? new List<AudioCut>();
+            _waveformDirty = true;
             Refresh();
         }
 
@@ -359,6 +447,9 @@ namespace App.Controls
             _audioCuts.Clear();
             _lastMarkerArea = Rectangle.Empty;
             ClearPenCache();
+            DisposeCaches();
+            _waveformDirty = true;
+            _gridDirty = true;
             Invalidate();
         }
 
@@ -372,6 +463,8 @@ namespace App.Controls
             if (disposing)
             {
                 _penCache.Dispose();
+                DisposePens();
+                DisposeCaches();
             }
             base.Dispose(disposing);
         }
